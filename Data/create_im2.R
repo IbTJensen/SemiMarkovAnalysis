@@ -1,38 +1,40 @@
 library(spatstat)
 
 load("Data/dataALR.RData")
-load("Data/dataALR.RData")
+load("Data/pointsAndPoly.RData")
 
-codes=unique(poly$code)
+codes=unique(data.alr$code)
 length(codes)
 
 polygs=list()
 
 for (i in 1:length(codes)){
-    admunit=poly[poly$code==codes[i],]
-
-    polygs[[i]]=owin(poly=list(x=admunit$x,y=admunit$y))
+  cat(i, "\r")
+  admunit=poly[poly$code==codes[i],]
+  polygs[[i]]=owin(poly=list(x=admunit$x,y=admunit$y))
 }
 
 tt <- tess(tiles = polygs)
 
 #create list of functions
-relevant=c(13:24)
+relevant=c(11, 13:24)
 
 covariatesfct=list()
 l=1
 for (i in relevant){
     tmp=data.alr[,i]
-    m=mean(na.omit(tmp))
-    s=sd(na.omit(tmp))
-    tmp=(tmp-m)/s
+    # m=mean(na.omit(tmp))
+    # s=sd(na.omit(tmp))
+    # tmp=(tmp-m)/s
     covariatesfct[[l]]=as.function(tt, values=tmp)
     l=l+1
 }
 
 
-names(covariatesfct)=c("prop0.15","prop16.24","prop25.64","evolution","poverty","activity","median","decile","prop19","proppublic","propindustry","proptrade")
-save(covariatesfct,file="covariatesfct_alr.rdata")
+names(covariatesfct)=c("density", "prop0.15", "prop16.24", "prop25.64",
+                       "evolution", "poverty", "activity", "median", "decile",
+                       "prop19", "proppublic", "propindustry", "proptrade")
+save(covariatesfct, file = "Data/covariatesfct_alr.rdata")
 #load("covariatesfct.rdata")
 #plot(covariatesfct[[1]])
 #der er nogle "hvide" dele i funktionen.
@@ -42,8 +44,8 @@ save(covariatesfct,file="covariatesfct_alr.rdata")
 #det er der ogsaa i im.
 #tesselationen ser OK ud.
 
-par(mfrow=c(2,3))
-for (i in 1:6)
-    plot(covariatesfct[[i]])
-for (i in 7:12)
-    plot(covariatesfct[[i]])
+# par(mfrow=c(2,3))
+# for (i in 1:6)
+#     plot(covariatesfct[[i]])
+# for (i in 7:12)
+#     plot(covariatesfct[[i]])

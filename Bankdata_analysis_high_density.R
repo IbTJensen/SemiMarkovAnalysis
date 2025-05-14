@@ -34,7 +34,7 @@ SS <- SemiMarkov(X = ppp.type,
                  covariate = Covar_dt,
                  edgecorrection = NULL,
                  R_within = seq(0.004, 0.008, 0.001),
-                 R_between = seq(0.0005, 0.003, 0.0005),
+                 R_between = seq(0.002, 0.01, 0.001),
                  sat = Inf)
 
 # SS <- SemiMarkov(X = ppp.type,
@@ -47,6 +47,10 @@ SS <- SemiMarkov(X = ppp.type,
 SS$R_within # 0.35
 SS$R_between # 0.005
 SS$sat # 6
+
+SS$R_within # 0.006
+SS$R_between # 0.003
+SS$sat # Inf
 
 SS$CI
 

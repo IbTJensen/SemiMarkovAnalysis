@@ -16,19 +16,15 @@ for(i in 1:length(covariatesfct)){
 
 colnames(Covar_dt)[-(1:2)] <- names(covariatesfct)
 
-# SS <- SemiMarkov(X = ppp.type,
-#                  covariate = Covar_dt,
-#                  edgecorrection = NULL,
-#                  R_within = c(0.005, 0.01, 0.015, 0.02),
-#                  R_between = c(0.0025, 0.005, 0.01, 0.015),
-#                  sat = c(2, 5, 10, 20))
+plot(covariatesfct[[1]])
 
+# Grid search for sat and R ----------------------------------------------------
 SS <- SemiMarkov(X = ppp.type,
-                 covariate = Covar_dt,
+                 covariate = Covar_dt[,-3],
                  edgecorrection = NULL,
-                 R_within = seq(0.33, 0.4, 0.01),
-                 R_between = seq(0.01, 0.006, 0.001),
-                 sat = seq(2,10,2))
+                 R_within = seq(0.002, 0.01, 0.002),
+                 R_between = seq(0.002, 0.01, 0.002),
+                 sat = Inf)
 
 SS$R_within # 0.35
 SS$R_between # 0.005

@@ -3,7 +3,7 @@ library(spatstat)
 load("Data/dataALR.RData")
 load("Data/pointsAndPoly.RData")
 
-# data.alr <- data.alr[data.alr$density > 500,]
+data.alr <- data.alr[data.alr$density > 500,]
 codes=unique(data.alr$code)
 length(codes)
 cities <- unique(data.alr$city)
@@ -25,7 +25,7 @@ relevant=c(13:24)
 covariatesfct=list()
 l=1
 for (i in relevant){
-    tmp=data.alr[data.alr$city %in% cities,"density"]
+    tmp=data.alr[data.alr$city %in% cities,i]
     # m=mean(na.omit(tmp))
     # s=sd(na.omit(tmp))
     # tmp=(tmp-m)/s
