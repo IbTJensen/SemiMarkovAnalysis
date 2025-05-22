@@ -215,15 +215,33 @@ tt <- tess(tiles = polygs)
 
 # model checks -----------------------------------------------------------------
 pred[,logit_prob:=logit(prob)]
-pred <- cbind(pred, SS$h)
+pred <- merge(pred, SS$h[,-4])
+# pred <- cbind(pred, SS$h)
 poly_dt <- data.table(poly)
 pred_to_merge <- pred[,-(1:5)]
 pred_to_merge <- pred_to_merge[,lapply(.SD, mean), code]
 poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
 
-ggplot(poly_dt, aes(x, y, group = code, fill = `2-2`))+
+model_check <- merge(Covar_dt, pred[,c(1:2,8)])
+# model_check[, lapply(.SD, mean, na.rm = T), `Intercept:1`<0,
+#             .SDcols = c("density", "prop0.15", "prop16.24", "prop25.64",
+#                         "evolution", "poverty", "activity", "median",
+#                         "decile", "prop19", "proppublic", "propindustry",
+#                         "proptrade")]
+
+model_check[, mean(`Intercept:1`), `Intercept:1`<0]
+
+ggplot(poly_dt, aes(x, y, group = code, fill = `density:1`))+
   geom_polygon(colour = "black")+
+  labs(x = "Longitude", y = "Latitude")+
   scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))
+
+ggplot(poly_dt, aes(x, y, group = code))+
+  geom_polygon(colour = "black", fill = "grey80", linewidth = 0.1)+
+  geom_point(data = pred, aes(x = xcoord, y = ycoord, colour = `density:1`),
+             size = 1)+
+  scale_colour_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))+
+  NULL
 
 # Brier scores
 SS_pred <- SS$pred[type_pred == 1]
@@ -264,8 +282,12 @@ pred_to_merge <- pred_to_merge[,.(logit_prob = mean(logit_prob)), code]
 poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
 
 ggplot(poly_dt, aes(x, y, group = code, fill = logit_prob))+
-  geom_polygon(colour = "black")+
-  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))
+  geom_polygon(colour = "black", linewidth = 0.1)+
+  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"),
+                       name = "Logit-probability")+
+  labs(x = "Longitude", y = "Latitude")+
+  NULL -> g
+ggsave("Figures/Pred_plot.pdf", width = 150, height = 110, units = "mm")
 
 # Urban-rural model
 pred_full[,logit_prob:=logit(prob)]
