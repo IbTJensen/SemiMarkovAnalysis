@@ -17,7 +17,7 @@ for (i in 1:length(codes)){
 tt <- tess(tiles = polygs)
 
 #create list of functions
-relevant=c(11, 13:24)
+relevant=c(1:2, 11, 13:24)
 
 covariatesfct=list()
 l=1
@@ -31,10 +31,12 @@ for (i in relevant){
 }
 
 
-names(covariatesfct)=c("density", "prop0.15", "prop16.24", "prop25.64",
-                       "evolution", "poverty", "activity", "median", "decile",
-                       "prop19", "proppublic", "propindustry", "proptrade")
+names(covariatesfct)=c("code", "city", "density", "prop0.15", "prop16.24",
+                       "prop25.64", "evolution", "poverty", "activity",
+                       "median", "decile", "prop19", "proppublic",
+                       "propindustry", "proptrade")
 save(covariatesfct, file = "Data/covariatesfct_alr.rdata")
+save(tt, file = "Data/regions.rdata")
 #load("covariatesfct.rdata")
 #plot(covariatesfct[[1]])
 #der er nogle "hvide" dele i funktionen.

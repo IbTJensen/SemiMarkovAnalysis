@@ -398,3 +398,6 @@ fwrite(dt, "Geyer results/Sim_Geyer_parameter_estimate_MC.csv")
 fwrite(res, "Geyer results/Geyer_res_summary.csv")
 fwrite(Results_sim, "Geyer results/Geyer_full_results.csv")
 
+# Int_22_est <- Results_sim[Parameter == "2-2" & window_size == 1, Estimate]
+# plot(density(Int_22_est))
+
