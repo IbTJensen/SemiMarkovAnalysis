@@ -63,7 +63,7 @@ plot(density(Gs_dt[Parameter == "1-1" & window_size == 4, Estimate]),
 abline(v = mean(Gs_dt[Parameter == "1-1" & window_size == 4, Estimate]),
        lty = 2)
 
-res2 <- res[Parameter %in% c("Covariate:1", "1-1", "1-2") & window_size == 4]
+res2 <- res[Parameter %in% c("Covariate:1", "1-1", "1-2") & window_size == 1]
 res3 <- res2[,.(Mean = mean(Estimate)), list(Model, Parameter)]
 res2 <- merge(res2, res3, all.x = T)
 
@@ -73,16 +73,28 @@ res2[Parameter == "1-2", Parameter := "gamma[12]"]
 # res2[Parameter == "Covariate:1", Parameter := paste0("(beta[","0","1","])","[2]")]
 # res2[Parameter == "Covariate:1", Parameter := expression(paste("(\u03b2"["01"],")"["2"]))]
 # res2[Parameter == "1-1", Parameter:="Interaction 1-1"]
-ggplot(data = res2, aes(x = Estimate))+
+ggplot(data = res2[Model != "Geyer"], aes(x = Estimate))+
   geom_density()+
   # facet_grid(Parameter~Model, labeller = label_bquote(alpha[.(label)]))+
-  facet_grid2(Parameter~Model, strip = strip_vanilla(), labeller = label_parsed,
-              scales = "free")+
+  facet_grid2(Model~Parameter, strip = strip_vanilla(), labeller = label_parsed,
+              scales = "free_y")+
   geom_vline(aes(xintercept = Mean), linetype = "dashed")+
   NULL -> Kernel_density_plot
 
 ggsave(filename = "Figures/Kernel_density_plot.pdf", plot = Kernel_density_plot,
        width = 160, height = 160, units = "mm", device = cairo_pdf)
+
+res_geyer <- res[Model == "Geyer"]
+res_geyer <- res_geyer[Parameter %in% c("1-2", "2-2")]
+
+ggplot(data = res_geyer, aes(x = Estimate))+
+  geom_density()+
+  # facet_grid(Parameter~Model, labeller = label_bquote(alpha[.(label)]))+
+  facet_grid2(window_size~Parameter, strip = strip_vanilla(), labeller = label_parsed,
+              scales = "free_y")+
+  geom_vline(xintercept = log(1.2))+
+  # geom_vline(aes(xintercept = Mean), linetype = "dashed")+
+  NULL -> Kernel_density_plot
 
 # Tables -----------------------------------------------------------------------
 res[window_size == 4, .(Std.error = mean(Std.error)), list(Model, Parameter)]
