@@ -29,8 +29,11 @@ plot(Covar_dt[,c("activity", "median", "poverty")])
 plot(Covar_dt[,c("density", "decile", "proptrade")])
 plot(Covar_dt$proptrade, Covar_dt$proppublic)
 
-Covar_dt[,":="(prop16.24 = NULL, prop25.64 = NULL, median = NULL,
-               poverty = NULL, proptrade = NULL, decile = NULL)]
+# Covar_dt[,":="(prop16.24 = NULL, prop25.64 = NULL, median = NULL,
+#                poverty = NULL, proptrade = NULL, decile = NULL)]
+Covar_dt[,density:=log(density)]
+Covar_dt[,":="(prop16.24 = NULL, prop25.64 = NULL, propindustry = NULL,
+               evolution = NULL, median = NULL)]
 CC2 <- cor(Covar_dt[,-(1:2)], use = "pairwise.complete.obs")
 
 plot(Covar_dt$density, Covar_dt$prop0.15)
@@ -72,6 +75,49 @@ logit <- function(x) log(x/(1-x))
 pred <- SS$pred_no_int[type_pred == 1 & !is.na(prob)]
 pred[,code:=covariatesfct[[1]](xcoord, ycoord)]
 # pred <- pred[,.(logit_prob = mean(logit(prob)), prob = mean(prob)),code]
+
+# Phi0 kernel estiamte ---------------------------------------------------------
+bandwidth <- 0.25
+
+x_pts <- seq(-5.1, 9.5, 0.1)
+y_pts <- seq(41.3, 51, 0.1)
+points_grid <- expand.grid(x = x_pts, y = y_pts)
+in_France <- inside.owin(points_grid$x, points_grid$y, ppp.type$window)
+points_grid <- points_grid[in_France,]
+
+points_grid_ppp <- ppp(points_grid$x, points_grid$y, ppp.type$window)
+ccc <- crosspairs(points_grid_ppp, ppp.type, rmax = bandwidth)
+
+phi0 <- rep(NA, nrow(points_grid))
+N <- rep(NA, nrow(points_grid))
+for(i in 1:length(phi0)){
+  cat(i, "\r")
+  w <- which(ccc$i == i)
+  p1 <- ppp.type[ccc$j[w]]
+  idx <- (1:ncol(SS$w))[-c(1:4, ncol(SS$w))]
+  A <- SS$w[xcoord %in% p1$x & ycoord %in% p1$y & type_obs == j, idx, with = F]
+  gamma_v <- as.matrix(A) %*% SS$betahat
+  if(nrow(A)>0){
+    phi0[i] <- 1/2*sum(1/exp(gamma_v), na.rm = T)
+  }
+  N[i] <- nrow(A)
+}
+
+phi0_dt <- data.table(points_grid, phi0 = phi0, N = N)
+
+phi0_mat <- matrix(NA, length(y_pts), length(x_pts))
+colnames(phi0_mat) <- as.character(x_pts)
+rownames(phi0_mat) <- as.character(y_pts)
+
+for(i in 1:nrow(phi0_dt)){
+  cat(i, "\r")
+  i1 <- as.character(phi0_dt$x[i])
+  i2 <- as.character(phi0_dt$y[i])
+  phi0_mat[i2, i1] <- phi0_dt$phi0[i]
+}
+
+phi0_im <- im(phi0_mat)
+plot(phi0_im)
 
 # Split in urban and rural -----------------------------------------------------
 # Make tessalation of French regions
