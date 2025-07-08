@@ -92,6 +92,7 @@ for(i in 1:nsim){
 
   data.table(Parameter = names(temp_large$betahat),
              Estimate = temp_large$betahat,
+             True_vale = target_param,
              Std.error = temp_large$std_err,
              within_CI = target_param > temp_large$CI$Lower_CI &
                target_param < temp_large$CI$Upper_CI,
@@ -171,7 +172,7 @@ target_param <- c(0, 0, 0.5, -0.5, log(gmma[lower.tri(gmma, diag = T)])/2)
 
 nsim=1800
 Results_sim <- data.table(Parameter = NA, Estimate = NA, Std.error = NA,
-                          within_CI = NA, window_size = NA)[-1]
+                          within_CI = NA, window_size = NA, n = NA)[-1]
 for (i in 1:nsim){
   set.seed(i)
   print(i)
@@ -202,17 +203,20 @@ for (i in 1:nsim){
 
   data.table(Parameter = names(temp_small$betahat),
              Estimate = temp_small$betahat,
+             True_vale = target_param,
              Std.error = temp_small$std_err,
              within_CI = target_param > temp_small$CI$Lower_CI &
                          target_param < temp_small$CI$Upper_CI,
-             window_size = 1) -> res_small
+             window_size = 1,
+             n = X_small$n) -> res_small
 
   data.table(Parameter = names(temp_large$betahat),
              Estimate = temp_large$betahat,
              Std.error = temp_large$std_err,
              within_CI = target_param > temp_large$CI$Lower_CI &
                target_param < temp_large$CI$Upper_CI,
-             window_size = 4) -> res_large
+             window_size = 4,
+             n = X_large$n) -> res_large
 
   Results_sim <- rbind(Results_sim, res_small, res_large)
 }
@@ -238,7 +242,7 @@ ns=1000
 nr=1e+7
 nv=1e+6
 
-phi0 <- phi0/1.6
+phi0 <- phi0/1.6*2.2
 
 trend1 <- function(x, y){
   pts <- ppp(x = x, y = y, owin(c(0,2), c(0,2)))
@@ -315,7 +319,7 @@ target_param <- c( c(-log(3), -log(5), 0.5, -0.5), log(c(1.1, 1, 1, 1.2, 1, 0.8)
 
 nsim=1800
 Results_sim <- data.table(Parameter = NA, Estimate = NA, Std.error = NA,
-                          within_CI = NA, window_size = NA)[-1]
+                          within_CI = NA, window_size = NA, n = NA)[-1]
 for (i in 1:nsim){
   set.seed(i)
   print(i)
@@ -366,17 +370,20 @@ for (i in 1:nsim){
 
   data.table(Parameter = names(temp_small$betahat),
              Estimate = temp_small$betahat,
+             True_vale = target_param,
              Std.error = temp_small$std_err,
              within_CI = target_param > temp_small$CI$Lower_CI &
                target_param < temp_small$CI$Upper_CI,
-             window_size = 1) -> res_small
+             window_size = 1,
+             n = X_small$n) -> res_small
 
   data.table(Parameter = names(temp_large$betahat),
              Estimate = temp_large$betahat,
              Std.error = temp_large$std_err,
              within_CI = target_param > temp_large$CI$Lower_CI &
                target_param < temp_large$CI$Upper_CI,
-             window_size = 4) -> res_large
+             window_size = 4,
+             n = X_large$n) -> res_large
 
   Results_sim <- rbind(Results_sim, res_small, res_large)
 }

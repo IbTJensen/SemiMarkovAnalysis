@@ -4,6 +4,7 @@ library(ggh4x)
 
 Ps_dt <- fread("Poisson results/Poisson_full_results.csv")
 St_dt <- fread("Strauss results/Strauss_full_results.csv")
+St_dt2 <- fread("Strauss results/Strauss_res_summary.csv")
 Gs_dt <- fread("Geyer results/Geyer_full_results.csv")
 
 # Plots of coverage rate -------------------------------------------------------
@@ -19,6 +20,7 @@ res_sum[,window_size:=factor(window_size)]
 min_MC <- 0.95 - 1.96*sqrt(0.95*0.05/1800)
 max_MC <- 0.95 + 1.96*sqrt(0.95*0.05/1800)
 
+res_sum[,window_size:=ifelse(window_size == 1, "W[1]", "W[2]")]
 res_sum[, Parameter:=factor(Parameter, levels = c("(Intercept):1",
                                                   "(Intercept):2",
                                                   "Covariate:1", "Covariate:2",
@@ -28,26 +30,162 @@ res_sum[,Model:=factor(Model, levels = c("Poisson", "Strauss", "Geyer"))]
 
 ggplot(data = res_sum, aes(x = Parameter, y = Coverage,
                            group = group, color = Model))+
-  geom_point() +
+  geom_point(shape = 21) +
   geom_abline(intercept = min_MC, slope = 0, linetype = "dashed") +
   geom_abline(intercept = 0.95, slope = 0) +
   geom_abline(intercept = max_MC, slope = 0, linetype = "dashed") +
-  geom_line(aes(linetype = window_size)) +
-  scale_color_manual(values = c("#bc272d", "#50ad9f", "#0000a2"))+
+  # geom_line(aes(linetype = window_size)) +
+  geom_line() +
+  facet_wrap(~window_size, nrow = 2, strip.position = "right",
+             labeller = label_parsed, scales = "free_y")+
+  scale_color_manual(values = c("#bc272d", "#0000a2", "#50ad9f"))+
   labs(y = "Coverage rate")+
-  scale_x_discrete(labels = c(expression(paste("(\u03b2"["01"],")"["1"])),
-                              expression(paste("(\u03b2"["02"],")"["1"])),
-                              expression(paste("(\u03b2"["01"],")"["2"])),
-                              expression(paste("(\u03b2"["02"],")"["2"])),
+  scale_x_discrete(labels = c(expression("\u03b2"["01,1"]),
+                              expression("\u03b2"["02,1"]),
+                              expression("\u03b2"["01,2"]),
+                              expression("\u03b2"["02,2"]),
                               expression("\u03b3"["11"]), expression("\u03b3"["12"]),
                               expression("\u03b3"["13"]), expression("\u03b3"["22"]),
                               expression("\u03b3"["23"]), expression("\u03b3"["33"])))+
+  theme_bw()+
+  theme(legend.position = "none",
+        strip.text.y.right = element_text(angle = 0))+
   NULL -> Coverage_plot
 
-ggsave(filename = "Figures/Coverage_plot.pdf", plot = Coverage_plot,
-       width = 160, height = 80, units = "mm", device = cairo_pdf)
+ggsave(filename = "Figures/Coverage_plot_sep.pdf", plot = Coverage_plot,
+       width = 160, height = 100, units = "mm", device = cairo_pdf)
+
+# Standard error plot Poisson/Strauss ------------------------------------------
+St_dt2 <- fread("Strauss results/Strauss_res_summary.csv")
+St_dt2[,Model:="Strauss"]
+Pt_dt2 <- fread("Poisson results/Poisson_res_summary.csv")
+Pt_dt2[,Model:="Poisson"]
+res_sum <- rbind(St_dt2, Pt_dt2[,-8])
+
+res_sum[, Parameter:=factor(Parameter, levels = c("(Intercept):1",
+                                                  "(Intercept):2",
+                                                  "Covariate:1", "Covariate:2",
+                                                  "1-1", "1-2", "1-3", "2-2",
+                                                  "2-3", "3-3"))]
+res_sum[,Model:=factor(Model, levels = c("Poisson", "Strauss"))]
+A1 <- res_sum[,c("Parameter", "window_size", "Std.error", "Model")]
+A2 <- res_sum[,c("Parameter", "window_size", "MC_std.error", "Model")]
+colnames(A2)[3] <- "Std.error"
+A1[,Estimate:="Model esimtate"]
+A2[,Estimate:="Monte-Carlo"]
+A <- rbind(A1, A2)
+A[,group:=paste(window_size, Model, Estimate, sep = "_")]
+A[,window_size:=factor(window_size)]
+colnames(A)[5] <- "Standard error"
+
+ggplot(data = A, mapping = aes(x = Parameter, y = Std.error, group = group,
+                               color = Model, shape = `Standard error`,
+                               linetype = `Standard error`))+
+  geom_point()+
+  geom_line()+
+  scale_color_manual(values = c("#bc272d", "#0000a2"))+
+  scale_shape_manual(values = c(21, 24))+
+  scale_x_discrete(labels = c(expression("\u03b2"["01,1"]),
+                              expression("\u03b2"["02,1"]),
+                              expression("\u03b2"["01,2"]),
+                              expression("\u03b2"["02,2"]),
+                              expression("\u03b3"["11"]), expression("\u03b3"["12"]),
+                              expression("\u03b3"["13"]), expression("\u03b3"["22"]),
+                              expression("\u03b3"["23"]), expression("\u03b3"["33"])))+
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(y = "Standard error")+
+  NULL -> Std_plot_poi_strauss
+
+ggsave("Figures/Std_plot_poi_strauss.pdf", Std_plot_poi_strauss,
+       width = 160, height = 70, units = "mm", device = cairo_pdf)
+
+# Standard error plot Geyer ----------------------------------------------------
+Gs_dt2 <- fread("Geyer results/Geyer_res_summary.csv")
+
+Gs_dt2[, Parameter:=factor(Parameter, levels = c("(Intercept):1",
+                                                  "(Intercept):2",
+                                                  "Covariate:1", "Covariate:2",
+                                                  "1-1", "1-2", "1-3", "2-2",
+                                                  "2-3", "3-3"))]
+A1 <- Gs_dt2[,c("Parameter", "window_size", "Std.error")]
+A2 <- Gs_dt2[,c("Parameter", "window_size", "MC_std.error")]
+colnames(A2)[3] <- "Std.error"
+A1[,Estimate:="Model esimtate"]
+A2[,Estimate:="Monte-Carlo"]
+A <- rbind(A1, A2)
+A[,group:=paste(window_size, Estimate, sep = "_")]
+A[,window_size:=factor(window_size)]
+colnames(A)[4] <- "Standard error"
+colnames(A)[2] <- "Window"
+A[,Window:=ifelse(Window == 1, "W[1]", "W[2]")]
+
+ggplot(data = A, mapping = aes(x = Parameter, y = Std.error, group = group,
+                               color = Window, shape = `Standard error`,
+                               linetype = `Standard error`))+
+  geom_point()+
+  geom_line()+
+  scale_color_manual(values = c("#bc272d", "#0000a2"),
+                     labels = c(expression(W[1], W[2])))+
+  scale_shape_manual(values = c(24, 21))+
+  scale_linetype_manual(values = c("dashed", "solid"))+
+  scale_x_discrete(labels = c(expression("\u03b2"["01,1"]),
+                              expression("\u03b2"["02,1"]),
+                              expression("\u03b2"["01,2"]),
+                              expression("\u03b2"["02,2"]),
+                              expression("\u03b3"["11"]), expression("\u03b3"["12"]),
+                              expression("\u03b3"["13"]), expression("\u03b3"["22"]),
+                              expression("\u03b3"["23"]), expression("\u03b3"["33"])))+
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(y = "Standard error")+
+  coord_cartesian(ylim = c(0,2), clip = "off")+
+  NULL -> Std_plot_Geyer
+
+ggsave("Figures/Std_plot_Geyer.pdf", Std_plot_Geyer,
+       width = 160, height = 70, units = "mm", device = cairo_pdf)
+
+# True vs estimated Geyer ------------------------------------------------------
+A1 <- Gs_dt2[,c("Parameter", "window_size", "Estimate")]
+A2 <- Gs_dt2[,c("Parameter", "window_size", "True_value")]
+colnames(A2)[3] <- "Estimate"
+A1[,Value:="Estimate"]
+A2[,Value:="True value"]
+A <- rbind(A1, A2)
+A[,group:=paste(window_size, Value, sep = "_")]
+A[,window_size:=factor(window_size)]
+colnames(A)[2] <- "Window"
+A <- A[group != "4_True value"]
+
+ggplot(data = A, mapping = aes(x = Parameter, y = Estimate, group = group,
+                               color = Value, shape = group,
+                               linetype = Window))+
+  geom_abline(intercept = 0, slope = 0)+
+  geom_line(data = A[Value == "Estimate"])+
+  # geom_line()+
+  geom_point()+
+  scale_color_manual(values = c("#bc272d", "#0000a2"))+
+  scale_shape_manual(values = c(21, 22, 24))+
+  scale_linetype_manual(values = c("dashed", "solid"),labels = c(expression(W[1], W[2])))+
+  scale_x_discrete(labels = c(expression("\u03b2"["01,1"]),
+                              expression("\u03b2"["02,1"]),
+                              expression("\u03b2"["01,2"]),
+                              expression("\u03b2"["02,2"]),
+                              expression("\u03b3"["11"]), expression("\u03b3"["12"]),
+                              expression("\u03b3"["13"]), expression("\u03b3"["22"]),
+                              expression("\u03b3"["23"]), expression("\u03b3"["33"])))+
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(y = "Parameter value")+
+  NULL -> Est_plot_Geyer
+
+ggsave("Figures/Est_plot_Geyer.pdf", Est_plot_Geyer,
+       width = 160, height = 70, units = "mm", device = cairo_pdf)
 
 # Kernel density plots ---------------------------------------------------------
+St_dt <- merge(St_dt, St_dt2[,c("Parameter", "window_size", "True_value")],
+               by = c("Parameter", "window_size"))
+
 plot(density(Ps_dt[Parameter == "1-1" & window_size == 4, Estimate]),
      main = "Estimate of interaction 1-1 on Poisson process")
 abline(v = mean(Ps_dt[Parameter == "1-1" & window_size == 4, Estimate]),
@@ -63,26 +201,31 @@ plot(density(Gs_dt[Parameter == "1-1" & window_size == 4, Estimate]),
 abline(v = mean(Gs_dt[Parameter == "1-1" & window_size == 4, Estimate]),
        lty = 2)
 
-res2 <- res[Parameter %in% c("Covariate:1", "1-1", "1-2") & window_size == 1]
-res3 <- res2[,.(Mean = mean(Estimate)), list(Model, Parameter)]
+# res2 <- res[Parameter %in% c("Covariate:1", "1-1", "1-2") & window_size == 1]
+res2 <- St_dt[Parameter %in% c("(Intercept):1", "Covariate:1", "1-1", "1-2") & window_size == 1]
+res3 <- res2[,.(Mean = mean(Estimate)), Parameter]
 res2 <- merge(res2, res3, all.x = T)
 
-res2[Parameter == "Covariate:1", Parameter := "(beta['01'])[2]"]
+res2[Parameter == "(Intercept):1", Parameter := "beta['01,1']"]
+res2[Parameter == "Covariate:1", Parameter := "beta['01,2']"]
 res2[Parameter == "1-1", Parameter := "gamma[11]"]
 res2[Parameter == "1-2", Parameter := "gamma[12]"]
 # res2[Parameter == "Covariate:1", Parameter := paste0("(beta[","0","1","])","[2]")]
 # res2[Parameter == "Covariate:1", Parameter := expression(paste("(\u03b2"["01"],")"["2"]))]
 # res2[Parameter == "1-1", Parameter:="Interaction 1-1"]
-ggplot(data = res2[Model != "Geyer"], aes(x = Estimate))+
+ggplot(data = res2, aes(x = Estimate))+
   geom_density()+
   # facet_grid(Parameter~Model, labeller = label_bquote(alpha[.(label)]))+
-  facet_grid2(Model~Parameter, strip = strip_vanilla(), labeller = label_parsed,
-              scales = "free_y")+
-  geom_vline(aes(xintercept = Mean), linetype = "dashed")+
+  # facet_grid2(Model~Parameter, strip = strip_vanilla(), labeller = label_parsed,
+  #             scales = "free_y")+
+  facet_wrap2(~Parameter, strip = strip_vanilla(), labeller = label_parsed,
+              scales = "free")+
+  geom_vline(aes(xintercept = Mean), color = "#bc272d")+
+  geom_vline(aes(xintercept = True_value), color = "#0000a2")+
   NULL -> Kernel_density_plot
 
 ggsave(filename = "Figures/Kernel_density_plot.pdf", plot = Kernel_density_plot,
-       width = 160, height = 160, units = "mm", device = cairo_pdf)
+       width = 160, height = 120, units = "mm", device = cairo_pdf)
 
 res_geyer <- res[Model == "Geyer"]
 res_geyer <- res_geyer[Parameter %in% c("1-2", "2-2")]
