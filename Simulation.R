@@ -29,12 +29,13 @@ for(i in 1:101^2){
 }
 
 X_im <- im(X_mat, xcol = seq(0, 2, 0.02), yrow = seq(0, 2, 0.02))
-phi0 <- im(Y_mat, xcol = seq(0, 2, 0.02), yrow = seq(0, 2, 0.02))
+phi0_init <- im(Y_mat, xcol = seq(0, 2, 0.02), yrow = seq(0, 2, 0.02))
 
 Spat_covar <- X_im
 unit_window <- owin(c(0,1), c(0,1))
 
 # Poisson process --------------------------------------------------------------
+phi0 <- phi0_init
 lambda_large1 <- phi0*exp(0.5*Spat_covar)
 lambda_large2 <- phi0*exp(-0.5*Spat_covar)
 lambda_large3 <- phi0
@@ -46,8 +47,9 @@ lambda_small3 <- lambda_large3[unit_window]
 target_param <- c(0, 0, 0.5 ,-0.5, 0, 0, 0, 0, 0, 0)
 
 nsim=1800
-Results_sim <- data.table(Parameter = NA, Estimate = NA, Std.error = NA,
-                          within_CI = NA, window_size = NA, n = NA)[-1]
+Results_sim <- data.table(Parameter = NA, Estimate = NA, True_value = NA,
+                          Std.error = NA, within_CI = NA, window_size = NA,
+                          n1 = NA, n2 = NA, n3 = NA)[-1]
 for(i in 1:nsim){
   set.seed(i)
   cat(i, "\r")
@@ -83,20 +85,30 @@ for(i in 1:nsim){
                              R_between = 0.04)
   )
 
+  n_small <- table(X_small$marks)
+  n_large <- table(X_large$marks)
+
   data.table(Parameter = names(temp_small$betahat),
              Estimate = temp_small$betahat,
+             True_value = target_param,
              Std.error = temp_small$std_err,
              within_CI = target_param > temp_small$CI$Lower_CI &
                target_param < temp_small$CI$Upper_CI,
-             window_size = 1, n = X_small$n) -> res_small
+             window_size = 1,
+             n1 = n_small[1],
+             n2 = n_small[2],
+             n3 = n_small[3]) -> res_small
 
   data.table(Parameter = names(temp_large$betahat),
              Estimate = temp_large$betahat,
-             True_vale = target_param,
+             True_value = target_param,
              Std.error = temp_large$std_err,
              within_CI = target_param > temp_large$CI$Lower_CI &
                target_param < temp_large$CI$Upper_CI,
-             window_size = 4, n = X_large$n) -> res_large
+             window_size = 4,
+             n1 = n_large[1],
+             n2 = n_large[2],
+             n3 = n_large[3]) -> res_large
 
   Results_sim <- rbind(Results_sim, res_small, res_large)
 }
@@ -104,8 +116,8 @@ Sys.time()
 
 res <- Results_sim[,.(Estimate = mean(Estimate), Std.error = mean(Std.error),
                       MC_std.error = sd(Estimate), Coverage = mean(within_CI),
-                      n = mean(n)),
-                   by = list(Parameter, window_size)]
+                      n1 = mean(n1), n2 = mean(n2), n3 = mean(n3)),
+                   by = list(Parameter, window_size, True_value)]
 
 data.table(Parameter = res$Parameter,
            Target_param = target_param,
@@ -113,9 +125,16 @@ data.table(Parameter = res$Parameter,
            Lower = res$Estimate - 1.96*res$MC_std.error/sqrt(nsim),
            Upper = res$Estimate + 1.96*res$MC_std.error/sqrt(nsim)) -> dt
 
-fwrite(dt, "Poisson results/Sim_Poisson_parameter_estimate_MC.csv")
-fwrite(res, "Poisson results/Poisson_res_summary.csv")
-fwrite(Results_sim, "Poisson results/Poisson_full_results.csv")
+nm1 <- paste("Sim", "Poisson", "parameter", "estimate", "MC",
+             as.character(Sys.Date()), sep = "_")
+nm2 <- paste("Sim", "Poisson", "res", "summary",
+             as.character(Sys.Date()), sep = "_")
+nm3 <- paste("Sim", "Poisson", "full", "results",
+             as.character(Sys.Date()), sep = "_")
+
+fwrite(dt, paste0("Poisson results/", nm1, ".csv") )
+fwrite(res, paste0("Poisson results/", nm2, ".csv"))
+fwrite(Results_sim, paste0("Poisson results/", nm3, ".csv"))
 
 # Multi-Strauss ----------------------------------------------------------------
 set.seed(123)
@@ -123,7 +142,7 @@ ns=1000
 nr=1e7
 nv=1e6
 
-phi0 <- 1.6*phi0
+phi0 <- 1.6*phi0_init
 
 trend1 <- function(x, y){
   pts <- ppp(x = x, y = y, owin(c(0,2), c(0,2)))
@@ -171,8 +190,9 @@ X_large$marks <- factor(X_large$marks, levels = 1:3)
 target_param <- c(0, 0, 0.5, -0.5, log(gmma[lower.tri(gmma, diag = T)])/2)
 
 nsim=1800
-Results_sim <- data.table(Parameter = NA, Estimate = NA, Std.error = NA,
-                          within_CI = NA, window_size = NA, n = NA)[-1]
+Results_sim <- data.table(Parameter = NA, Estimate = NA, True_value = NA,
+                          Std.error = NA, within_CI = NA, window_size = NA,
+                          n1 = NA, n2 = NA, n3 = NA)[-1]
 for (i in 1:nsim){
   set.seed(i)
   print(i)
@@ -201,30 +221,39 @@ for (i in 1:nsim){
                              sat = Inf)
   )
 
+  n_small <- table(X_small$marks)
+  n_large <- table(X_large$marks)
+
   data.table(Parameter = names(temp_small$betahat),
              Estimate = temp_small$betahat,
-             True_vale = target_param,
+             True_value = target_param,
              Std.error = temp_small$std_err,
              within_CI = target_param > temp_small$CI$Lower_CI &
                          target_param < temp_small$CI$Upper_CI,
              window_size = 1,
-             n = X_small$n) -> res_small
+             n1 = n_small[1],
+             n2 = n_small[2],
+             n3 = n_small[3]) -> res_small
 
   data.table(Parameter = names(temp_large$betahat),
              Estimate = temp_large$betahat,
+             True_value = target_param,
              Std.error = temp_large$std_err,
              within_CI = target_param > temp_large$CI$Lower_CI &
                target_param < temp_large$CI$Upper_CI,
              window_size = 4,
-             n = X_large$n) -> res_large
+             n1 = n_large[1],
+             n2 = n_large[2],
+             n3 = n_large[3]) -> res_large
 
   Results_sim <- rbind(Results_sim, res_small, res_large)
 }
 Sys.time()
 
 res <- Results_sim[,.(Estimate = mean(Estimate), Std.error = mean(Std.error),
-                      MC_std.error = sd(Estimate), Coverage = mean(within_CI)),
-                   by = list(Parameter, window_size)]
+                      MC_std.error = sd(Estimate), Coverage = mean(within_CI),
+                      n1 = mean(n1), n2 = mean(n2), n3 = mean(n3)),
+                   by = list(Parameter, window_size, True_value)]
 
 data.table(Parameter = res$Parameter,
            Target_param = target_param,
@@ -232,9 +261,16 @@ data.table(Parameter = res$Parameter,
            Lower = res$Estimate - 1.96*res$MC_std.error/sqrt(nsim),
            Upper = res$Estimate + 1.96*res$MC_std.error/sqrt(nsim)) -> dt
 
-fwrite(dt, "Strauss results/Sim_Strauss_parameter_estimate_MC.csv")
-fwrite(res, "Strauss results/Strauss_res_summary.csv")
-fwrite(Results_sim, "Strauss results/Strauss_full_results.csv")
+nm1 <- paste("Sim", "Strauss", "parameter", "estimate", "MC",
+             as.character(Sys.Date()), sep = "_")
+nm2 <- paste("Sim", "Strauss", "res", "summary",
+             as.character(Sys.Date()), sep = "_")
+nm3 <- paste("Sim", "Strauss", "full", "results",
+             as.character(Sys.Date()), sep = "_")
+
+fwrite(dt, paste0("Strauss results/", nm1, ".csv") )
+fwrite(res, paste0("Strauss results/", nm2, ".csv"))
+fwrite(Results_sim, paste0("Strauss results/", nm3, ".csv"))
 
 # Geyer saturation -------------------------------------------------------------
 set.seed(123)
@@ -242,16 +278,16 @@ ns=1000
 nr=1e+7
 nv=1e+6
 
-phi0 <- phi0/1.6*2.2
+phi0 <- phi0_init*1.3
 
 trend1 <- function(x, y){
   pts <- ppp(x = x, y = y, owin(c(0,2), c(0,2)))
-  return(phi0[pts]*exp(-log(3) + 0.5*Spat_covar[pts]))
+  return(phi0[pts]*exp(-log(1.4) + 0.5*Spat_covar[pts]))
 }
 
 trend2 <- function(x,y){
   pts <- ppp(x = x, y = y, owin(c(0,2), c(0,2)))
-  return(phi0[pts]*exp(-log(5) - 0.5*Spat_covar[pts]))
+  return(phi0[pts]*exp(-log(1.6)-0.5*Spat_covar[pts]))
 }
 
 trend3 <- function(x,y){
@@ -261,14 +297,14 @@ trend3 <- function(x,y){
 
 # Saturation process 1
 mod1_small <- list(cif = "geyer",
-                   par = list(beta = 1, gamma = 1.1, r = 0.02, sat = 5),
+                   par = list(beta = 1, gamma = 1.1, r = 0.02, sat = 10),
                    w = c(0,1,0,1),
                    trend = trend1)
 X1_small <- rmh(model = mod1_small, start = list(n.start = ns),
                 control = list(nrep = nr, nverb = nv, track = T))
 
 mod1_large <- list(cif = "geyer",
-                   par = list(beta = 1, gamma = 1.1, r = 0.02, sat = 5),
+                   par = list(beta = 1, gamma = 1.1, r = 0.02, sat = 10),
                    w = c(0,2,0,2),
                    trend = trend1)
 X1_large <- rmh(model = mod1_large, start = list(n.start = ns),
@@ -278,14 +314,14 @@ X1_large$marks <- rep(1, X1_large$n)
 
 # Saturation process 2
 mod2_small <- list(cif = "geyer",
-                   par = list(beta = 1, gamma = 1.2, r = 0.02, sat = 5),
+                   par = list(beta = 1, gamma = 1.2, r = 0.02, sat = 10),
                    w = c(0,1,0,1),
                    trend = trend2)
 X2_small <- rmh(model = mod2_small, start = list(n.start = ns),
                 control = list(nrep = nr, nverb = nv, track = T))
 
 mod2_large <- list(cif = "geyer",
-                   par = list(beta = 1, gamma = 1.2, r = 0.02, sat = 5),
+                   par = list(beta = 1, gamma = 1.2, r = 0.02, sat = 10),
                    w = c(0,2,0,2),
                    trend = trend2)
 X2_large <- rmh(model = mod2_large, start = list(n.start = ns),
@@ -295,14 +331,14 @@ X2_large$marks <- rep(2, X2_large$n)
 
 # Saturation process 3
 mod3_small <- list(cif = "geyer",
-                   par = list(beta = 1, gamma = 0.8, r = 0.02, sat = 5),
+                   par = list(beta = 1, gamma = 0.8, r = 0.02, sat = 10),
                    w = c(0,1,0,1),
                    trend = trend3)
 X3_small <- rmh(model = mod3_small, start = list(n.start = ns),
                 control = list(nrep = nr, nverb = nv, track = T))
 
 mod3_large <- list(cif = "geyer",
-                   par = list(beta = 1, gamma = 0.8, r = 0.02, sat = 5),
+                   par = list(beta = 1, gamma = 0.8, r = 0.02, sat = 10),
                    w = c(0,2,0,2),
                    trend = trend3)
 X3_large <- rmh(model = mod3_large, start = list(n.start = ns),
@@ -315,11 +351,13 @@ X_small$marks <- factor(X_small$marks)
 X_large <- superimpose(X1_large, X2_large, X3_large)
 X_large$marks <- factor(X_large$marks)
 
-target_param <- c( c(-log(3), -log(5), 0.5, -0.5), log(c(1.1, 1, 1, 1.2, 1, 0.8)) )
+target_param <- c( c(-log(1.4), -log(1.6), 0.5, -0.5),
+                   log( c(1.1, 1, 1, 1.2, 1, 0.8) ) )
 
 nsim=1800
-Results_sim <- data.table(Parameter = NA, Estimate = NA, Std.error = NA,
-                          within_CI = NA, window_size = NA, n = NA)[-1]
+Results_sim <- data.table(Parameter = NA, Estimate = NA, True_value = NA,
+                          Std.error = NA, within_CI = NA, window_size = NA,
+                          n1 = NA, n2 = NA, n3 = NA)[-1]
 for (i in 1:nsim){
   set.seed(i)
   print(i)
@@ -356,7 +394,7 @@ for (i in 1:nsim){
                              R_within = 0.02,
                              R_between = 0.04,
                              standardize = T,
-                             sat = 5)
+                             sat = 10)
   )
 
   suppressWarnings(
@@ -365,25 +403,33 @@ for (i in 1:nsim){
                              R_within = 0.02,
                              R_between = 0.04,
                              standardize = T,
-                             sat = 5)
+                             sat = 10)
   )
+
+  n_small <- table(X_small$marks)
+  n_large <- table(X_large$marks)
 
   data.table(Parameter = names(temp_small$betahat),
              Estimate = temp_small$betahat,
-             True_vale = target_param,
+             True_value = target_param,
              Std.error = temp_small$std_err,
              within_CI = target_param > temp_small$CI$Lower_CI &
                target_param < temp_small$CI$Upper_CI,
              window_size = 1,
-             n = X_small$n) -> res_small
+             n1 = n_small[1],
+             n2 = n_small[2],
+             n3 = n_small[3]) -> res_small
 
   data.table(Parameter = names(temp_large$betahat),
              Estimate = temp_large$betahat,
+             True_value = target_param,
              Std.error = temp_large$std_err,
              within_CI = target_param > temp_large$CI$Lower_CI &
                target_param < temp_large$CI$Upper_CI,
              window_size = 4,
-             n = X_large$n) -> res_large
+             n1 = n_large[1],
+             n2 = n_large[2],
+             n3 = n_large[3]) -> res_large
 
   Results_sim <- rbind(Results_sim, res_small, res_large)
 }
@@ -392,8 +438,9 @@ Sys.time()
 res <- Results_sim[,.(Estimate = mean(Estimate, na.rm = T),
                       Std.error = mean(Std.error, na.rm = T),
                       MC_std.error = sd(Estimate),
-                      Coverage = mean(within_CI, na.rm = T)),
-                   by = list(Parameter, window_size)]
+                      Coverage = mean(within_CI, na.rm = T),
+                      n1 = mean(n1), n2 = mean(n2), n3 = mean(n3)),
+                   by = list(Parameter, True_value, window_size)]
 
 data.table(Parameter = res$Parameter,
            Target_param = target_param,
@@ -401,9 +448,16 @@ data.table(Parameter = res$Parameter,
            Lower = res$Estimate - 1.96*res$MC_std.error/sqrt(nsim),
            Upper = res$Estimate + 1.96*res$MC_std.error/sqrt(nsim)) -> dt
 
-fwrite(dt, "Geyer results/Sim_Geyer_parameter_estimate_MC.csv")
-fwrite(res, "Geyer results/Geyer_res_summary.csv")
-fwrite(Results_sim, "Geyer results/Geyer_full_results.csv")
+nm1 <- paste("Sim", "Geyer", "parameter", "estimate", "MC",
+             as.character(Sys.Date()), sep = "_")
+nm2 <- paste("Sim", "Geyer", "res", "summary",
+             as.character(Sys.Date()), sep = "_")
+nm3 <- paste("Sim", "Geyer", "full", "results",
+             as.character(Sys.Date()), sep = "_")
+
+fwrite(dt, paste0("Geyer results/", nm1, ".csv") )
+fwrite(res, paste0("Geyer results/", nm2, ".csv"))
+fwrite(Results_sim, paste0("Geyer results/", nm3, ".csv"))
 
 # Int_22_est <- Results_sim[Parameter == "2-2" & window_size == 1, Estimate]
 # plot(density(Int_22_est))

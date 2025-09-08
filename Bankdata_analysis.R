@@ -31,12 +31,12 @@ plot(Covar_dt$proptrade, Covar_dt$proppublic)
 
 # Covar_dt[,":="(prop16.24 = NULL, prop25.64 = NULL, median = NULL,
 #                poverty = NULL, proptrade = NULL, decile = NULL)]
-Covar_dt[,density:=log(density)]
-Covar_dt[,":="(prop16.24 = NULL, prop25.64 = NULL, propindustry = NULL,
-               evolution = NULL, median = NULL)]
+Covar_dt[,log_density:=log(density)]
+Covar_dt[,":="(prop0.15 = NULL, prop25.64 = NULL, density = NULL,
+               median = NULL, poverty = NULL)]
 CC2 <- cor(Covar_dt[,-(1:2)], use = "pairwise.complete.obs")
 
-plot(Covar_dt$density, Covar_dt$prop0.15)
+plot(Covar_dt$log_density, Covar_dt$prop16.24)
 plot(Covar_dt$activity, Covar_dt$proppublic)
 
 # Grid search for sat and R ----------------------------------------------------
@@ -54,42 +54,112 @@ if(!do_grid_search){
   SS <- SemiMarkov(X = ppp.type,
                    covariate = Covar_dt,
                    edgecorrection = NULL,
-                   R_within = 0.009,
+                   R_within = 0.008,
                    R_between = 0.004,
                    sat = 4,
                    standardize = T,
                    Poisson = F)
 }
 
-SS$R_within # 0.009
+SS$R_within # 0.008
 SS$R_between # 0.004
 SS$maximum_log_likelihood
 SS$sat # 4
 
 SS$CI
 
-xt <- xtable::xtable(SS$CI, digits = 3)
+SS_CI <- data.table(SS$CI)
+SS_CI[,Covariate:=gsub(":1", "", Covariate)]
+SS_CI[11:13,Covariate:=gsub("1", "Luc", Covariate)]
+SS_CI[11:13,Covariate:=gsub("2", "Coop", Covariate)]
+SS_CI[,"95% Confidence interval":=paste0(
+  "[", round(Lower_CI, 2), ", ", round(Upper_CI, 2), "]")]
+SS_CI[,":="(Lower_CI = NULL, Upper_CI = NULL)]
+SS_CI$Covariate[1] <- "Intercept"
+xt <- xtable::xtable(SS_CI, digits = 2)
 print(xt, include.rownames=FALSE)
 
 logit <- function(x) log(x/(1-x))
-pred <- SS$pred_no_int[type_pred == 1 & !is.na(prob)]
-pred[,code:=covariatesfct[[1]](xcoord, ycoord)]
+# pred <- SS$pred_no_int[type_pred == 1 & !is.na(prob)]
+pred <- SS$pred[type_pred == 1 & !is.na(prob)]
+# pred[,code:=covariatesfct[[1]](xcoord, ycoord)]
 # pred <- pred[,.(logit_prob = mean(logit(prob)), prob = mean(prob)),code]
 
 # Phi0 kernel estiamte ---------------------------------------------------------
-bandwidth <- 0.25
+# bandwidth <- 0.05
 
-x_pts <- seq(-5.1, 9.5, 0.1)
-y_pts <- seq(41.3, 51, 0.1)
+# density_fct <- covariatesfct[[3]]
+# bandwidth <- function(x, y){
+#   dns <- density_fct(x, y)
+#   if(is.na(dns)){
+#     bdw <- 0.1
+#     return(bdw)
+#   }
+#   bdw <- NULL
+#   if(dns < 150){
+#     bdw <- 0.25
+#   }
+#   if(dns >= 150 & dns < 400){
+#     bdw <- 0.1
+#   }
+#   if(dns >= 400 & dns < 700){
+#     bdw <- 0.075
+#   }
+#   if(dns >= 700){
+#     bdw <- 0.05
+#   }
+#   return(bdw)
+# }
+
+x_pts <- seq(-5.1, 9.5, 0.02)
+y_pts <- seq(41.3, 51, 0.02)
 points_grid <- expand.grid(x = x_pts, y = y_pts)
 in_France <- inside.owin(points_grid$x, points_grid$y, ppp.type$window)
 points_grid <- points_grid[in_France,]
 
 points_grid_ppp <- ppp(points_grid$x, points_grid$y, ppp.type$window)
-ccc <- crosspairs(points_grid_ppp, ppp.type, rmax = bandwidth)
+# ccc <- crosspairs(points_grid_ppp, ppp.type, rmax = 0.05)
+ccc_i <- list()
+ccc_j <- list()
+for(i in 1:points_grid_ppp$n){
+  cat(i, "\r")
+  ccc_temp <- crosspairs(points_grid_ppp[i], ppp.type, rmax = 0.5)
+  distances <- ccc_temp$d
+  if(length(distances) < 10){
+    ccc_i[[i]] <- rep(i, sum(rank(distances)<5))
+    ccc_j[[i]] <- ccc_temp$j[rank(distances)<5]
+  } else{
+    sdist <- sort(distances)
+    if(sdist[10] <= 0.02){
+      ccc_i[[i]] <- rep(i, sum(distances < 0.02))
+      ccc_j[[i]] <- ccc_temp$j[distances < 0.02]
+    }
+    if(sdist[10] > 0.02 & sdist[10] <= 0.15){
+      ccc_i[[i]] <- rep(i, sum(rank(distances) < 10))
+      ccc_j[[i]] <- ccc_temp$j[rank(distances) < 10]
+    }
+    if(sdist[10] > 0.15){
+      ccc_i[[i]] <- rep(i, sum(rank(distances) < 5))
+      ccc_j[[i]] <- ccc_temp$j[rank(distances) < 5]
+    }
+  }
+}
 
-phi0 <- rep(NA, nrow(points_grid))
-N <- rep(NA, nrow(points_grid))
+# for(i in 1:points_grid_ppp$n){
+#   cat(i, "\r")
+#   bdw <- bandwidth(points_grid_ppp$x[i], points_grid_ppp$y[i])
+#   ccc_temp <- crosspairs(points_grid_ppp[i], ppp.type, rmax = bdw)
+#   ccc_i[[i]] <- rep(i, length(ccc_temp$i))
+#   ccc_j[[i]] <- ccc_temp$j
+# }
+
+ccc <- list(i = unlist(ccc_i), j = unlist(ccc_j))
+
+# phi0 <- rep(NA, nrow(points_grid))
+# N <- rep(NA, nrow(points_grid))
+
+phi0 <- rep(0, nrow(points_grid))
+N <- rep(0, nrow(points_grid))
 for(i in 1:length(phi0)){
   cat(i, "\r")
   w <- which(ccc$i == i)
@@ -117,7 +187,13 @@ for(i in 1:nrow(phi0_dt)){
 }
 
 phi0_im <- im(phi0_mat)
-plot(phi0_im)
+# nm <- paste0("Figures/Kernel_est_", bandwidth, ".pdf")
+# pdf(nm, width = 150/25.4, height = 100/25.4)
+# plot(log(phi0_im), main = expression(paste("Kernel estimate of log ", phi[0],
+#                                            ", ", omega, " = 0.05")))
+png(filename = "Figures/Kernel_est_full.png", width = 1100, height = 725)
+plot(log(phi0_im), main = expression(paste("Log of Kernel estimate of ", phi[0])))
+dev.off()
 
 # Split in urban and rural -----------------------------------------------------
 # Make tessalation of French regions
@@ -264,9 +340,9 @@ pred[,logit_prob:=logit(prob)]
 pred <- merge(pred, SS$h[,-4])
 # pred <- cbind(pred, SS$h)
 poly_dt <- data.table(poly)
-pred_to_merge <- pred[,-(1:5)]
-pred_to_merge <- pred_to_merge[,lapply(.SD, mean), code]
-poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
+# pred_to_merge <- pred[,-(1:5)]
+# pred_to_merge <- pred_to_merge[,lapply(.SD, mean), code]
+# poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
 
 model_check <- merge(Covar_dt, pred[,c(1:2,8)])
 # model_check[, lapply(.SD, mean, na.rm = T), `Intercept:1`<0,
@@ -277,14 +353,23 @@ model_check <- merge(Covar_dt, pred[,c(1:2,8)])
 
 model_check[, mean(`Intercept:1`), `Intercept:1`<0]
 
-ggplot(poly_dt, aes(x, y, group = code, fill = `density:1`))+
-  geom_polygon(colour = "black")+
-  labs(x = "Longitude", y = "Latitude")+
-  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))
+ggplot(poly_dt, aes(x, y, group = code))+
+  geom_polygon(colour = "white", fill = "white")+
+  labs(x = "Longitude", y = "Latitude", colour = "Logit-probability")+
+  geom_point(data = pred, mapping = aes(x = xcoord, y = ycoord,
+                                        group = 1, colour = logit_prob),
+             size = 1)+
+  scale_colour_gradientn(colours = c("yellow", "orange", "red",
+                                     "purple", "blue"))+
+  theme(legend.position = "bottom")+
+  NULL -> Points_in_France
+
+ggsave("Figures/logit_prob_points.pdf", Points_in_France,
+       width = 165, height = 140, units = "mm")
 
 ggplot(poly_dt, aes(x, y, group = code))+
   geom_polygon(colour = "black", fill = "grey80", linewidth = 0.1)+
-  geom_point(data = pred, aes(x = xcoord, y = ycoord, colour = `density:1`),
+  geom_point(data = pred, aes(x = xcoord, y = ycoord, colour = `log_density:1`),
              size = 1)+
   scale_colour_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))+
   NULL
@@ -333,6 +418,7 @@ ggplot(poly_dt, aes(x, y, group = code, fill = logit_prob))+
                        name = "Logit-probability")+
   labs(x = "Longitude", y = "Latitude")+
   NULL -> g
+
 ggsave("Figures/Pred_plot.pdf", width = 150, height = 110, units = "mm")
 
 # Urban-rural model
