@@ -2,13 +2,43 @@ library(spatstat)
 library(data.table)
 library(SemiMarkov)
 library(ggplot2)
+library(ggpubr)
+library(sf)
 
-# Loading and covariates -------------------------------------------------------
+# Loading data -----------------------------------------------------------------
 load("Data/covariatesfct_alr.rdata")
 load("Data/pointsAndPoly.RData")
 load("Data/regions.rdata")
 do_grid_search <- F
 
+# Plotting point pattern -------------------------------------------------------
+ppp.dt <- data.table(x = ppp.type$x, y = ppp.type$y,
+                     Type = ifelse(ppp.type$marks == "cooperative",
+                                   "Cooperative banks", "Lucrative banks")
+                     )
+http_comp <- c("https://raw.githubusercontent.com", "gregoiredavid",
+               "france-geojson", "master",
+               "regions-version-simplifiee.geojson")
+region_url <- paste(http_comp, collapse = "/")
+France <- st_read(region_url)
+france_outer <- st_union(France)
+
+ggplot(data = france_outer) +
+  geom_sf(fill = "white", color = "black") +
+  geom_point(data = ppp.dt, mapping = aes(x = x, y = y, color = Type),
+             size = 0.2)+
+  facet_wrap(~Type)+
+  guides(color = "none")+
+  scale_color_manual(values = c("#bc272d", "#0000a2"))+
+  theme_minimal() +
+  labs(x = NULL, y = NULL)+
+  scale_x_continuous(breaks = seq(-4,12,4)) +
+  NULL -> ppp.plot
+
+ggsave("Figures/Banks_plot_ppp.pdf", ppp.plot,
+       width = 165, height = 120, units = "mm")
+
+# Loading an managing covariates -----------------------------------------------
 Covar_dt <- data.table(xcoord = ppp.type$x,
                        ycoord = ppp.type$y)
 
@@ -39,11 +69,16 @@ CC2 <- cor(Covar_dt[,-(1:2)], use = "pairwise.complete.obs")
 plot(Covar_dt$log_density, Covar_dt$prop16.24)
 plot(Covar_dt$activity, Covar_dt$proppublic)
 
+colnames(Covar_dt) <- gsub("prop16.24", "prop.age", colnames(Covar_dt))
+colnames(Covar_dt) <- gsub("evolution", "pop.growth", colnames(Covar_dt))
+colnames(Covar_dt) <- gsub("decile", "income.decile", colnames(Covar_dt))
+colnames(Covar_dt) <- gsub("prop19", "prop.firms", colnames(Covar_dt))
+
 # Grid search for sat and R ----------------------------------------------------
 if(do_grid_search){
   SS <- SemiMarkov(X = ppp.type,
                    covariate = Covar_dt,
-                   edgecorrection = NULL,
+                   edgecorrection = 0.02,
                    R_within = seq(0.001, 0.01, 0.001),
                    R_between = seq(0.001, 0.01, 0.001),
                    sat = 2:10)
@@ -53,127 +88,136 @@ if(do_grid_search){
 if(!do_grid_search){
   SS <- SemiMarkov(X = ppp.type,
                    covariate = Covar_dt,
-                   edgecorrection = NULL,
-                   R_within = 0.008,
+                   edgecorrection = 0.02,
+                   R_within = 0.006,
                    R_between = 0.004,
-                   sat = 4,
+                   sat = 3,
                    standardize = T,
                    Poisson = F)
 }
 
-SS$R_within # 0.008
+SS$R_within # 0.006
 SS$R_between # 0.004
 SS$maximum_log_likelihood
-SS$sat # 4
+SS$sat # 3
 
 SS$CI
 
 SS_CI <- data.table(SS$CI)
 SS_CI[,Covariate:=gsub(":1", "", Covariate)]
+SS_CI[10,Covariate:=gsub("_", "-", Covariate)]
 SS_CI[11:13,Covariate:=gsub("1", "Luc", Covariate)]
 SS_CI[11:13,Covariate:=gsub("2", "Coop", Covariate)]
-SS_CI[,"95% Confidence interval":=paste0(
-  "[", round(Lower_CI, 2), ", ", round(Upper_CI, 2), "]")]
-SS_CI[,":="(Lower_CI = NULL, Upper_CI = NULL)]
-SS_CI$Covariate[1] <- "Intercept"
-xt <- xtable::xtable(SS_CI, digits = 2)
-print(xt, include.rownames=FALSE)
 
+SS_plot <- data.table(SS_CI)
+SS_plot[1,Covariate:="        Intercept"]
+SS_plot[,Covariate:=factor(Covariate, levels = rev(Covariate))]
+ggplot(data = SS_plot[-1],
+       mapping = aes(x = Estimate,
+                     y = Covariate))+
+  geom_point()+
+  geom_vline(xintercept = 0, linetype = "dashed")+
+  geom_errorbar(mapping = aes(xmin = Lower_CI, xmax = Upper_CI))+
+  theme_bw()+
+  labs(y = "Covariate")+
+  NULL -> CI_plot
+
+# ggplot(data = SS_plot[1],
+#        mapping = aes(x = Estimate,
+#                      y = Covariate))+
+#   geom_point()+
+#   geom_vline(xintercept = 0, linetype = "dashed")+
+#   geom_errorbar(mapping = aes(xmin = Lower_CI, xmax = Upper_CI))+
+#   theme_bw()+
+#   labs(y = "", x = NULL)+
+#   NULL -> CI_plot2
+#
+# CI_plots <- ggarrange(CI_plot2, CI_plot, ncol = 1, heights = c(0.175, 0.825))
+# ggsave(filename = "Figures/CI_plot.pdf",
+#        width = 170, height = 120, units = "mm")
+ggsave(
+  filename = "Figures/CI_plot.pdf",
+  plot = CI_plot, width = 170, height = 66, units = "mm"
+)
+
+# Cooperative probabilities - supplementary ------------------------------------
 logit <- function(x) log(x/(1-x))
-# pred <- SS$pred_no_int[type_pred == 1 & !is.na(prob)]
 pred <- SS$pred[type_pred == 1 & !is.na(prob)]
-# pred[,code:=covariatesfct[[1]](xcoord, ycoord)]
-# pred <- pred[,.(logit_prob = mean(logit(prob)), prob = mean(prob)),code]
+pred[,logit_prob:=logit(prob)]
+poly_dt <- data.table(poly)
+
+ewbrks <- seq(-4, 12, 4)
+nsbrks <- seq(42, 50, 2)
+ewlbls <- sapply(ewbrks, function(x) fcase(x < 0, paste(x, "°E"),
+                                           x > 0, paste(x, "°W"),
+                                           x == 0, paste(0, "°")))
+nslbls <- sapply(nsbrks, function(x) fcase(x < 0, paste(x, "°S"),
+                                           x > 0, paste(x, "°N"),
+                                           x == 0, paste(0, "°")))
+ggplot(data = france_outer) +
+  geom_sf(fill = "white", color = "black") +
+  geom_point(data = pred, mapping = aes(x = xcoord, y = ycoord,
+                                        group = 1, colour = logit_prob),
+             size = 0.5)+
+  scale_colour_gradientn(colours = c("yellow", "orange", "red",
+                                     "purple", "blue"))+
+  theme_minimal() +
+  theme(legend.position = "bottom")+
+  labs(x = NULL, y = NULL, colour = "Logit-probability")+
+  scale_x_continuous(breaks = seq(-4,12,4)) +
+  NULL -> Points_in_France
+
+ggsave("Figures/logit_prob_points.pdf", Points_in_France,
+       width = 165, height = 140, units = "mm")
 
 # Phi0 kernel estiamte ---------------------------------------------------------
-# bandwidth <- 0.05
+bandwidth <- 0.25
 
-# density_fct <- covariatesfct[[3]]
-# bandwidth <- function(x, y){
-#   dns <- density_fct(x, y)
-#   if(is.na(dns)){
-#     bdw <- 0.1
-#     return(bdw)
-#   }
-#   bdw <- NULL
-#   if(dns < 150){
-#     bdw <- 0.25
-#   }
-#   if(dns >= 150 & dns < 400){
-#     bdw <- 0.1
-#   }
-#   if(dns >= 400 & dns < 700){
-#     bdw <- 0.075
-#   }
-#   if(dns >= 700){
-#     bdw <- 0.05
-#   }
-#   return(bdw)
-# }
-
-x_pts <- seq(-5.1, 9.5, 0.02)
-y_pts <- seq(41.3, 51, 0.02)
+x_pts <- seq(-5.1, 9.5, 0.05)
+y_pts <- seq(41.3, 51, 0.05)
 points_grid <- expand.grid(x = x_pts, y = y_pts)
 in_France <- inside.owin(points_grid$x, points_grid$y, ppp.type$window)
 points_grid <- points_grid[in_France,]
 
 points_grid_ppp <- ppp(points_grid$x, points_grid$y, ppp.type$window)
-# ccc <- crosspairs(points_grid_ppp, ppp.type, rmax = 0.05)
-ccc_i <- list()
-ccc_j <- list()
-for(i in 1:points_grid_ppp$n){
-  cat(i, "\r")
-  ccc_temp <- crosspairs(points_grid_ppp[i], ppp.type, rmax = 0.5)
-  distances <- ccc_temp$d
-  if(length(distances) < 10){
-    ccc_i[[i]] <- rep(i, sum(rank(distances)<5))
-    ccc_j[[i]] <- ccc_temp$j[rank(distances)<5]
-  } else{
-    sdist <- sort(distances)
-    if(sdist[10] <= 0.02){
-      ccc_i[[i]] <- rep(i, sum(distances < 0.02))
-      ccc_j[[i]] <- ccc_temp$j[distances < 0.02]
-    }
-    if(sdist[10] > 0.02 & sdist[10] <= 0.15){
-      ccc_i[[i]] <- rep(i, sum(rank(distances) < 10))
-      ccc_j[[i]] <- ccc_temp$j[rank(distances) < 10]
-    }
-    if(sdist[10] > 0.15){
-      ccc_i[[i]] <- rep(i, sum(rank(distances) < 5))
-      ccc_j[[i]] <- ccc_temp$j[rank(distances) < 5]
-    }
-  }
+ccc <- crosspairs(points_grid_ppp, ppp.type, rmax = bandwidth)
+
+# Epanechnikov kernel
+K <- function(u){
+  2/pi*(1-(u/bandwidth)^2)*(u <= bandwidth)
 }
-
-# for(i in 1:points_grid_ppp$n){
-#   cat(i, "\r")
-#   bdw <- bandwidth(points_grid_ppp$x[i], points_grid_ppp$y[i])
-#   ccc_temp <- crosspairs(points_grid_ppp[i], ppp.type, rmax = bdw)
-#   ccc_i[[i]] <- rep(i, length(ccc_temp$i))
-#   ccc_j[[i]] <- ccc_temp$j
+# Uniform kernel
+# K <- function(u){
+#   return(1/(pi*bandwidth^2))
 # }
-
-ccc <- list(i = unlist(ccc_i), j = unlist(ccc_j))
-
-# phi0 <- rep(NA, nrow(points_grid))
-# N <- rep(NA, nrow(points_grid))
 
 phi0 <- rep(0, nrow(points_grid))
 N <- rep(0, nrow(points_grid))
+Admin_unit <- rep(0, nrow(points_grid))
+gm_save <- rep(0, nrow(points_grid))
+Log_dens <- rep(0, nrow(points_grid))
 for(i in 1:length(phi0)){
   cat(i, "\r")
   w <- which(ccc$i == i)
   p1 <- ppp.type[ccc$j[w]]
   idx <- (1:ncol(SS$w))[-c(1:4, ncol(SS$w))]
-  A <- SS$w[xcoord %in% p1$x & ycoord %in% p1$y & type_obs == j, idx, with = F]
-  gamma_v <- as.matrix(A) %*% SS$betahat
+  A <- SS$w[xcoord %in% p1$x & ycoord %in% p1$y & type_obs == j]
+  gamma_v <- as.numeric(as.matrix(A[,idx, with = F]) %*% SS$betahat)
   if(nrow(A)>0){
-    phi0[i] <- 1/2*sum(1/exp(gamma_v), na.rm = T)
+    vec_diffs <- t(t(as.matrix(A[,1:2])) - c(points_grid_ppp$x[i],
+                                             points_grid_ppp$y[i]))
+    distances <- apply(vec_diffs, 1, function(x) sqrt(sum(x^2)))
+    phi0[i] <- 1/2*sum(K(distances)/exp(gamma_v), na.rm = T)
+    # gm_save[i] <- gamma_v
   }
   N[i] <- nrow(A)
+  Admin_unit[i] <- covariatesfct[[2]](points_grid_ppp$x[i],
+                                      points_grid_ppp$y[i])
+  Log_dens[i] <- covariatesfct[[3]](points_grid_ppp$x[i],
+                                    points_grid_ppp$y[i])
 }
 
-phi0_dt <- data.table(points_grid, phi0 = phi0, N = N)
+phi0_dt <- data.table(points_grid, phi0 = phi0, N = N, Admin_unit, Log_dens)
 
 phi0_mat <- matrix(NA, length(y_pts), length(x_pts))
 colnames(phi0_mat) <- as.character(x_pts)
@@ -187,287 +231,56 @@ for(i in 1:nrow(phi0_dt)){
 }
 
 phi0_im <- im(phi0_mat)
-# nm <- paste0("Figures/Kernel_est_", bandwidth, ".pdf")
-# pdf(nm, width = 150/25.4, height = 100/25.4)
-# plot(log(phi0_im), main = expression(paste("Kernel estimate of log ", phi[0],
-#                                            ", ", omega, " = 0.05")))
-png(filename = "Figures/Kernel_est_full.png", width = 1100, height = 725)
-plot(log(phi0_im), main = expression(paste("Log of Kernel estimate of ", phi[0])))
-dev.off()
 
-# Split in urban and rural -----------------------------------------------------
-# Make tessalation of French regions
-data <- data[data$code %in% pred$code,]
-codes=unique(data$code)
-length(codes)
-cities <- unique(data$city)
+splot(log(phi0_im), main = NULL)
 
-polygs=list()
-for (i in 1:length(codes)){
-  cat(i, "\r")
-  admunit=poly[poly$code==codes[i],]
+ewbrks <- seq(-4, 12, 4)
+nsbrks <- seq(42, 50, 2)
+ewlbls <- sapply(ewbrks, function(x) fcase(x < 0, paste(x, "°E"),
+                                           x > 0, paste(x, "°W"),
+                                           x == 0, paste(0, "°")))
+nslbls <- sapply(nsbrks, function(x) fcase(x < 0, paste(x, "°S"),
+                                           x > 0, paste(x, "°N"),
+                                           x == 0, paste(0, "°")))
+by_unit <- phi0_dt[,.(phi0 = mean(phi0, na.rm = T),
+                      Log_dens = mean(Log_dens, na.rm = T)),
+                   Admin_unit]
+colnames(by_unit)[1] <- "city"
+poly_dt2 <- merge(poly_dt, by_unit, by = "city")
+poly_dt2[,":="(phi0 = log(phi0), Log_dens = log(Log_dens))]
 
-  polygs[[i]]=owin(poly=list(x=admunit$x,y=admunit$y))
-}
-
-tt <- tess(tiles = polygs)
-
-# Urban
-urban_codes <- unique(poly[poly$density>500,"code"])
-tt_urban <- tess(tiles = polygs[codes %in% urban_codes])
-
-high_density <- inside.owin(ppp.type$x, ppp.type$y, tt_urban)
-ppp.urban <- ppp.type[high_density]
-
-Covar_dt[,bank_type:=ppp.type$marks]
-Covar_urban <- Covar_dt[density>500]
-
-all(Covar_urban$xcoord == ppp.urban$x)
-all(Covar_urban$ycoord == ppp.urban$y)
-
-# Rural
-rural_codes <- unique(poly[poly$density<500,"code"])
-tt_rural <- tess(tiles = polygs[codes %in% rural_codes])
-
-low_density <- inside.owin(ppp.type$x, ppp.type$y, tt_rural)
-ppp.rural <- ppp.type[low_density]
-
-Covar_rural <- Covar_dt[density<500]
-all(Covar_rural$xcoord == ppp.rural$x)
-all(Covar_rural$ycoord == ppp.rural$y)
-
-# Grid search for high density -------------------------------------------------
-# SS_urban <- SemiMarkov(X = ppp.urban,
-#                        covariate = Covar_urban,
-#                        edgecorrection = NULL,
-#                        R_within = seq(0.005, 0.015, 0.001),
-#                        R_between = seq(0.003, 0.007, 0.001),
-#                        sat = c(2,4,6))
-
-# SS_urban <- SemiMarkov(X = ppp.urban,
-#                        covariate = Covar_urban[,-ncol(Covar_urban),with=F],
-#                        edgecorrection = NULL,
-#                        R_within = seq(0.005, 0.014, 0.001),
-#                        R_between = seq(0.003, 0.012, 0.001),
-#                        sat = 2:6)
-
-SS_urban <- SemiMarkov(X = ppp.urban,
-                       covariate = Covar_urban[,-ncol(Covar_urban),with=F],
-                       edgecorrection = NULL,
-                       R_within = 0.006,
-                       R_between = 0.007,
-                       sat = 3)
-
-SS_urban$sat # 3
-SS_urban$R_within # 0.006
-SS_urban$R_between # 0.007
-SS_urban$CI
-pred_urban <- SS_urban$pred_no_int[type_pred == 1]
-pred_urban2 <- SS_urban$pred[type_pred == 1]
-
-# SS_rural <- SemiMarkov(X = ppp.rural,
-#                        covariate = Covar_rural[,-ncol(Covar_rural),with=F],
-#                        edgecorrection = NULL,
-#                        R_within = seq(0.005, 0.014, 0.001),
-#                        R_between = seq(0.003, 0.012, 0.001),
-#                        sat = 2:6)
-
-SS_rural <- SemiMarkov(X = ppp.rural,
-                       covariate = Covar_rural[,-ncol(Covar_rural),with=F],
-                       edgecorrection = NULL,
-                       R_within = 0.009,
-                       R_between = 0.004,
-                       sat = 3)
-
-SS_rural$sat # 3
-SS_rural$R_within # 0.009
-SS_rural$R_between # 0.004
-SS_rural$CI
-pred_rural <- SS_rural$pred_no_int[type_pred == 1]
-pred_rural2 <- SS_rural$pred[type_pred == 1]
-
-pred_full <- rbind(pred_rural, pred_urban)
-pred_full <- pred_full[!is.na(prob)]
-pred_full[,code:=covariatesfct[[1]](xcoord, ycoord)]
-pred_full[,logit_prob:=logit(prob)]
-
-pred_full2 <- rbind(pred_rural2, pred_urban2)
-pred_full2 <- pred_full2[!is.na(prob)]
-pred_full2[,code:=covariatesfct[[1]](xcoord, ycoord)]
-pred_full2[,logit_prob:=logit(prob)]
-# pred_full <- pred_full[match(codes, pred_full$code)]
-
-# Separate rural and urban regions ---------------------------------------------
-# Covar_urban <- as.data.frame(Covar_dt[,-(1:2)]) * as.numeric(Covar_dt$density>500)
-# Covar_rural <- as.data.frame(Covar_dt[,-(1:2)]) * as.numeric(Covar_dt$density<500)
-# colnames(Covar_urban) <- paste(colnames(Covar_urban), "urban", sep = "_")
-# colnames(Covar_rural) <- paste(colnames(Covar_rural), "rural", sep = "_")
-# Covar_full <- cbind(Covar_dt[,1:2], Covar_urban, Covar_rural)
-
-
-# Plot -------------------------------------------------------------------------
-data <- data[data$code %in% pred$code,]
-codes=unique(data$code)
-length(codes)
-cities <- unique(data$city)
-# pred <- pred[match(codes, pred$code)]
-
-polygs=list()
-for (i in 1:length(codes)){
-  cat(i, "\r")
-  admunit=poly[poly$code==codes[i],]
-
-  polygs[[i]]=owin(poly=list(x=admunit$x,y=admunit$y))
-}
-tt <- tess(tiles = polygs)
-
-# pred_fct <- as.function(tt, values = pred$logit_prob)
-
-# pdf("Figures/pred_logit.pdf", width = 180/25.4, height = 180/25.4)
-# plot(pred_fct, main = "Predicted logit-proportion of cooperative banks")
-# dev.off()
-
-# Exploratory ------------------------------------------------------------------
-# summary_ratios <- poly_dt[,.(log_ratio = mean(log(cooperative/lucrative)),
-#                              lucrative = mean(lucrative),
-#                              cooperative = mean(cooperative)), city]
-#
-# summary_ratios <- summary_ratios[abs(log_ratio) != Inf & !is.na(log_ratio)]
-# summary_ratios[order(log_ratio)]
-
-# model checks -----------------------------------------------------------------
-pred[,logit_prob:=logit(prob)]
-pred <- merge(pred, SS$h[,-4])
-# pred <- cbind(pred, SS$h)
-poly_dt <- data.table(poly)
-# pred_to_merge <- pred[,-(1:5)]
-# pred_to_merge <- pred_to_merge[,lapply(.SD, mean), code]
-# poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
-
-model_check <- merge(Covar_dt, pred[,c(1:2,8)])
-# model_check[, lapply(.SD, mean, na.rm = T), `Intercept:1`<0,
-#             .SDcols = c("density", "prop0.15", "prop16.24", "prop25.64",
-#                         "evolution", "poverty", "activity", "median",
-#                         "decile", "prop19", "proppublic", "propindustry",
-#                         "proptrade")]
-
-model_check[, mean(`Intercept:1`), `Intercept:1`<0]
-
-ggplot(poly_dt, aes(x, y, group = code))+
-  geom_polygon(colour = "white", fill = "white")+
-  labs(x = "Longitude", y = "Latitude", colour = "Logit-probability")+
-  geom_point(data = pred, mapping = aes(x = xcoord, y = ycoord,
-                                        group = 1, colour = logit_prob),
-             size = 1)+
-  scale_colour_gradientn(colours = c("yellow", "orange", "red",
-                                     "purple", "blue"))+
+ggplot(poly_dt2, aes(x, y, group = code, fill = phi0))+
+  geom_polygon(colour = "black", linewidth = 0.1)+
+  labs(x = NULL, y = NULL,
+       fill = expression(paste("log ", hat(phi)[0])))+
+  theme_minimal()+
   theme(legend.position = "bottom")+
-  NULL -> Points_in_France
+  scale_fill_gradientn(colours = rev(c("yellow", "orange", "red",
+                                   "purple", "blue", "blue", "blue")))+
+  coord_quickmap()+
+  scale_x_continuous(breaks = ewbrks, labels = ewlbls) +
+  scale_y_continuous(breaks = nsbrks, labels = nslbls) +
+  NULL -> phi0_plot
 
-ggsave("Figures/logit_prob_points.pdf", Points_in_France,
+ggplot(poly_dt2, aes(x, y, group = code, fill = Log_dens))+
+  geom_polygon(colour = "black", linewidth = 0.1)+
+  labs(x = NULL, y = NULL, fill = "log-density")+
+  theme_minimal()+
+  theme(legend.position = "bottom")+
+  scale_fill_gradientn(colours = rev(c("yellow", "orange", "red",
+                                   "purple", "blue")))+
+  coord_quickmap()+
+  scale_x_continuous(breaks = ewbrks, labels = ewlbls) +
+  scale_y_continuous(breaks = nsbrks, labels = nslbls) +
+  NULL -> Dens_plot
+
+phi0_dens_plot <- ggarrange(phi0_plot, Dens_plot)
+ggsave("Figures/phi0_dens_plot.pdf", phi0_dens_plot,
        width = 165, height = 140, units = "mm")
 
-ggplot(poly_dt, aes(x, y, group = code))+
-  geom_polygon(colour = "black", fill = "grey80", linewidth = 0.1)+
-  geom_point(data = pred, aes(x = xcoord, y = ycoord, colour = `log_density:1`),
-             size = 1)+
-  scale_colour_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))+
-  NULL
+cor(log(by_unit$phi0[by_unit$phi0 != 0]),
+    log(by_unit$Log_dens[by_unit$phi0 != 0]),
+    use = "pairwise.complete.obs")
 
-# Brier scores
-SS_pred <- SS$pred[type_pred == 1]
-SS_obs <- data.table(xcoord = ppp.type$x, ycoord = ppp.type$y,
-                     coop = ifelse(ppp.type$marks == "cooperative", 1, 0))
-SS_dt <- merge(SS_obs, SS_pred[,c(1,2,5)], by = c("xcoord", "ycoord"))
-SS_dt <- SS_dt[!is.na(prob)]
-mean(abs(SS_dt$coop - SS_dt$prob)^2) # Overall Brier score
-mean((1 - SS_dt[coop == 1, prob])^2) # Brier score for cooperative
-mean((0 - SS_dt[coop == 0, prob])^2) # Brier score for lucrative
-# Aberage Brier score of the two types
-0.5*(mean((1 - SS_dt[coop == 1, prob])^2) + mean((0 - SS_dt[coop == 0, prob])^2))
-
-SS_comb_pred <- pred_full2[type_pred == 1]
-SS_comb_obs <- data.table(xcoord = ppp.type$x, ycoord = ppp.type$y,
-                          coop = ifelse(ppp.type$marks == "cooperative", 1, 0))
-SS_comb_dt <- merge(SS_comb_obs, SS_comb_pred[,c(1,2,5)],
-                    by = c("xcoord", "ycoord"))
-SS_comb_dt <- SS_comb_dt[!is.na(prob)]
-mean(abs(SS_comb_dt$coop - SS_comb_dt$prob)^2) # Overall Brier score
-mean((1 - SS_comb_dt[coop == 1, prob])^2) # Brier score for cooperative
-mean((0 - SS_comb_dt[coop == 0, prob])^2) # Brier score for lucrative
-# Aberage Brier score of the two types
-0.5*(mean((1 - SS_comb_dt[coop == 1, prob])^2) + mean((0 - SS_comb_dt[coop == 0, prob])^2))
-
-# Plot with interactions -------------------------------------------------------
-# france_map <- map_data("france")
-
-# pred2 <- SS$pred[type_pred == 1 & !is.na(prob)]
-# pred2[,code:=covariatesfct[[1]](xcoord, ycoord)]
-# pred2[,logit_prob:=logit(prob)]
-
-# One model for whole France
-pred <- pred[,1:7]
-poly_dt <- data.table(poly)
-pred_to_merge <- pred[,c("code", "logit_prob")]
-pred_to_merge <- pred_to_merge[,.(logit_prob = mean(logit_prob)), code]
-poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
-
-ggplot(poly_dt, aes(x, y, group = code, fill = logit_prob))+
-  geom_polygon(colour = "black", linewidth = 0.1)+
-  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"),
-                       name = "Logit-probability")+
-  labs(x = "Longitude", y = "Latitude")+
-  NULL -> g
-
-ggsave("Figures/Pred_plot.pdf", width = 150, height = 110, units = "mm")
-
-# Urban-rural model
-pred_full[,logit_prob:=logit(prob)]
-poly_dt <- data.table(poly)
-pred_to_merge <- pred_full[,c("code", "logit_prob")]
-pred_to_merge <- pred_to_merge[,.(logit_prob = mean(logit_prob)), code]
-poly_dt <- merge(poly_dt, pred_to_merge, by = "code", all = T)
-
-ggplot(poly_dt, aes(x, y, group = code, fill = logit_prob))+
-  geom_polygon(colour = "black")+
-  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))
-
-ggplot(poly_dt[code %in% urban_codes], aes(x, y, group = code, fill = logit_prob))+
-  geom_polygon(colour = "black")+
-  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))
-
-ggplot(poly_dt[code %in% rural_codes], aes(x, y, group = code, fill = logit_prob))+
-  geom_polygon(colour = "black")+
-  scale_fill_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))
-
-# Old
-data_obs <- data.table(x = ppp.type$x, y = ppp.type$y, type = ppp.type$marks)
-
-ggplot(poly_dt, aes(x, y, group = code))+
-  geom_polygon(colour = "black", fill = "grey90")+
-  geom_point(data = data_obs, aes(x = x, y = y, group = 1, colour = type),
-             size = 0.1, alpha = 0.5)
-
-ggplot(poly_dt, aes(x, y, group = code))+
-  geom_polygon(colour = "black", fill = "grey90")+
-  geom_point(data = pred_full2, aes(x = xcoord, y = ycoord,
-                                group = 1, colour = logit_prob), size = 0.1)+
-  # scale_colour_gradientn(colours = rainbow(8))+
-  scale_colour_gradientn(colours = c("yellow", "orange", "red", "purple", "blue"))+
-  NULL
-
-ggplot(poly_dt, aes(x, y, group = code))+
-  geom_polygon(colour = "black", fill = "grey90")+
-  geom_point(data = pred2, aes(x = xcoord, y = ycoord,
-                               group = 1, colour = prob_logit), size = 0.1)+
-  scale_colour_gradientn(colours = rainbow(8))
-
-ggplot(france_map, aes(long, lat, group = group)) +
-  geom_polygon(fill = "grey30", colour = NA) +
-  geom_point(data = pred2, aes(x = xcoord, y = ycoord,
-                               group = 1, colour = prob_logit),
-             size = 0.1)+
-  scale_color_gradientn(colours = rainbow(8))+
-  coord_quickmap()
-
-
+plot(log(by_unit$phi0[by_unit$phi0 != 0]),
+     log(by_unit$Log_dens[by_unit$phi0 != 0]))

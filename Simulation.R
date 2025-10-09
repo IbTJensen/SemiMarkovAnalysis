@@ -2,8 +2,6 @@ library(spatstat)
 library(data.table)
 library(geoR)
 library(SemiMarkov)
-# devtools::document("~/Git/SemiMarkov")
-# devtools::load_all("~/Git/SemiMarkov")
 
 # Setting up spatial covariates ------------------------------------------------
 set.seed(123)
