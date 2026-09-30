@@ -1,0 +1,1 @@
+Note: The file simulated_point_patterns_2026-09-19.rds is needed to run several scripts in this repo, but it was too large upload to github. It can be recreated by running 2_point_pattern_sim.R.
