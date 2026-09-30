@@ -2,3 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+.vscode/
+SemiMarkovAnalysis.code-workspace
+
+1_simulation_study/simulated_data/simulated_point_patterns_2026-09-19.rds
+2_analysis_bank_data/data/*
+!2_analysis_bank_data/data/Instructions.txt
